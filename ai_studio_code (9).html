@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>极客本地图片压缩 Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap');
+        
+        body {
+            font-family: 'Noto Sans SC', sans-serif;
+            background-color: #f5f5f5;
+            color: #1a1a1a;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* 布局容器 */
+        .dashboard-container {
+            display: grid;
+            grid-template-rows: auto 1fr auto;
+            height: 85vh;
+            width: 90vw;
+            max-width: 1000px;
+            background: #fff;
+            border: 1px solid #e5e5e5;
+            box-shadow: 0 20px 40px -10px rgba(0,0,0,0.1);
+            border-radius: 16px;
+            overflow: hidden;
+        }
+
+        .split-view {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            overflow: hidden;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .left-panel {
+            background-color: #ffffff;
+            border-right: 1px solid #f0f0f0;
+            position: relative;
+            padding: 2rem;
+            transition: background-color 0.2s;
+        }
+
+        .right-panel {
+            padding: 2rem;
+            overflow-y: auto;
+            background-color: #fff;
+            position: relative;
+        }
+
+        .upload-minimal {
+            border: 2px dashed #f0f0f0;
+            border-radius: 12px;
+            transition: all 0.3s ease;
+            color: #d4d4d4;
+        }
+        .left-panel:hover .upload-minimal, 
+        .upload-minimal.dragging {
+            border-color: #1a1a1a;
+            color: #1a1a1a;
+            background-color: #fafafa;
+        }
+
+        .neo-btn {
+            background: #1a1a1a; 
+            color: #fff;
+            border: 1px solid #1a1a1a;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .neo-btn:hover { background: #333; transform: translateY(-1px); }
+        .neo-btn:active { transform: translateY(0); }
+        .neo-btn:disabled { 
+            background: #f5f5f5; border-color: #e5e5e5; color: #a3a3a3; 
+            cursor: not-allowed; transform: none;
+        }
+
+        .radio-card { border: 1px solid #e5e5e5; transition: all 0.2s; }
+        input:checked + .radio-card { border-color: #1a1a1a; background-color: #fafafa; }
+        .radio-dot { width: 8px; height: 8px; background: transparent; border-radius: 50%; border: 2px solid #e5e5e5; }
+        input:checked + .radio-card .radio-dot { background: #1a1a1a; border-color: #1a1a1a; }
+
+        .fade-in { opacity: 0; transform: translateY(10px); transition: opacity 0.5s ease, transform 0.5s ease; }
+        .fade-in.visible { opacity: 1; transform: translateY(0); }
+
+        /* 对比滑块样式 */
+        .compare-slider-container {
+            position: relative;
+            user-select: none;
+            overflow: hidden;
+            cursor: ew-resize;
+            background-image: 
+                linear-gradient(45deg, #eee 25%, transparent 25%), 
+                linear-gradient(-45deg, #eee 25%, transparent 25%), 
+                linear-gradient(45deg, transparent 75%, #eee 75%), 
+                linear-gradient(-45deg, transparent 75%, #eee 75%);
+            background-size: 20px 20px;
+            background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+        }
+
+        .image-bg-layer {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background-size: contain;
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+
+        .img-comp-overlay {
+            position: absolute;
+            top: 0; left: 0; height: 100%; width: 50%;
+            overflow: hidden; 
+            border-right: 2px solid #fff;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.2);
+            z-index: 10;
+            background-color: transparent; 
+        }
+
+        .slider-handle {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 32px; height: 32px;
+            background: white;
+            border-radius: 50%;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+            pointer-events: none;
+        }
+
+        .custom-scroll::-webkit-scrollbar { width: 5px; }
+        .custom-scroll::-webkit-scrollbar-track { background: transparent; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #e5e5e5; border-radius: 4px; }
+
+        @media (max-width: 768px) {
+            body { overflow: auto; height: auto; display: block; padding: 20px 0; }
+            .dashboard-container { height: auto; width: 95vw; grid-template-rows: auto 1fr 1fr auto; }
+            .split-view { grid-template-columns: 1fr; border-bottom: none; }
+            .left-panel { height: 300px; border-right: none; border-bottom: 1px solid #f0f0f0; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="dashboard-container">
+        <!-- 顶部 -->
+        <header class="h-16 border-b border-gray-100 flex items-center justify-between px-6 bg-white shrink-0 z-20">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 bg-black text-white flex items-center justify-center font-bold rounded-lg text-sm">PRO</div>
+                <h1 class="text-lg font-bold tracking-tight text-gray-900">图片压缩工具</h1>
+            </div>
+            <div class="text-xs font-medium text-gray-400 bg-gray-50 px-3 py-1 rounded-full hidden sm:block">
+                本地处理 · 智能算法 · 隐私安全
+            </div>
+        </header>
+
+        <!-- 中间 -->
+        <div class="split-view">
+            <!-- 左侧预览 -->
+            <div class="left-panel group" id="drop-zone">
+                <input type="file" id="file-input" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-50" accept="image/png, image/jpeg, image/webp, image/gif">
+                
+                <div id="view-empty" class="w-full h-full flex flex-col items-center justify-center upload-minimal p-6">
+                    <div class="mb-4 text-gray-200 group-hover:text-black transition-colors duration-300">
+                        <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"></path></svg>
+                    </div>
+                    <h3 class="text-sm font-medium transition-colors duration-300">点击或拖拽图片至此</h3>
+                    <p class="text-xs mt-2 opacity-50">支持 JPG / PNG / WEBP / GIF</p>
+                </div>
+
+                <div id="view-preview" class="hidden absolute inset-0 bg-white flex flex-col items-center justify-center p-8 z-40">
+                    <div class="relative w-full h-full max-h-[85%] flex items-center justify-center">
+                        <img id="preview-img" class="max-w-full max-h-full object-contain drop-shadow-lg" src="" alt="preview">
+                    </div>
+                    <div class="mt-4 text-center z-50">
+                        <p id="filename" class="font-bold text-sm text-gray-800 truncate max-w-[200px] mx-auto">filename.jpg</p>
+                        <p class="text-xs text-gray-400 mt-1 font-mono">原始大小: <span id="original-size">0 MB</span></p>
+                        <span class="inline-block mt-2 text-[10px] text-gray-300 hover:text-red-500 cursor-pointer transition-colors border-b border-dashed border-gray-300">更换图片</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右侧设置 -->
+            <div class="right-panel custom-scroll">
+                <div id="settings-placeholder" class="h-full flex items-center justify-center">
+                    <p class="text-xs text-gray-300 font-medium tracking-wide">配置项将在图片上传后显示</p>
+                </div>
+
+                <div id="settings-content" class="hidden fade-in space-y-8 py-2">
+                    <div>
+                        <h4 class="text-xs font-bold text-gray-900 mb-4 flex items-center gap-2">
+                            <span class="w-4 h-4 rounded-full bg-black text-white flex items-center justify-center text-[10px]">1</span>
+                            选择导出格式
+                        </h4>
+                        <div class="grid grid-cols-2 gap-3">
+                            <label class="cursor-pointer">
+                                <input type="radio" name="format" value="image/jpeg" class="hidden" checked>
+                                <div class="radio-card p-3 rounded-lg flex items-center gap-3 hover:border-gray-400">
+                                    <div class="radio-dot shrink-0"></div>
+                                    <div><div class="font-bold text-sm text-gray-800">JPG 格式</div><div class="text-[10px] text-gray-400">兼容性高</div></div>
+                                </div>
+                            </label>
+                            <label class="cursor-pointer">
+                                <input type="radio" name="format" value="image/png" class="hidden">
+                                <div class="radio-card p-3 rounded-lg flex items-center gap-3 hover:border-gray-400">
+                                    <div class="radio-dot shrink-0"></div>
+                                    <div><div class="font-bold text-sm text-gray-800">PNG 格式</div><div class="text-[10px] text-gray-400">无损透明</div></div>
+                                </div>
+                            </label>
+                            <label class="cursor-pointer">
+                                <input type="radio" name="format" value="image/webp" class="hidden">
+                                <div class="radio-card p-3 rounded-lg flex items-center gap-3 hover:border-gray-400">
+                                    <div class="radio-dot shrink-0"></div>
+                                    <div><div class="font-bold text-sm text-gray-800">WebP 格式</div><div class="text-[10px] text-gray-400">体积最小</div></div>
+                                </div>
+                            </label>
+                            <label class="cursor-pointer">
+                                <input type="radio" name="format" value="image/gif" class="hidden">
+                                <div class="radio-card p-3 rounded-lg flex items-center gap-3 hover:border-gray-400">
+                                    <div class="radio-dot shrink-0"></div>
+                                    <div><div class="font-bold text-sm text-gray-800">GIF 格式</div><div class="text-[10px] text-gray-400">动图处理</div></div>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between items-center mb-4">
+                            <h4 class="text-xs font-bold text-gray-900 flex items-center gap-2">
+                                <span class="w-4 h-4 rounded-full bg-black text-white flex items-center justify-center text-[10px]">2</span>
+                                设定压缩强度
+                            </h4>
+                            <div class="flex bg-gray-100 p-0.5 rounded-lg">
+                                <button id="mode-quality" class="px-3 py-1 text-[10px] font-bold rounded bg-white shadow-sm text-black transition-all">按画质</button>
+                                <button id="mode-size" class="px-3 py-1 text-[10px] font-bold rounded text-gray-400 hover:text-black transition-all">按大小</button>
+                            </div>
+                        </div>
+
+                        <!-- 选项值已更新：添加了 scale 逻辑 -->
+                        <div id="panel-quality" class="space-y-2">
+                            <!-- 选项 value 格式调整为： "quality_param|scale_param" -->
+                            <label class="cursor-pointer block">
+                                <input type="radio" name="quality_level" value="1.0|1.0" class="hidden">
+                                <div class="radio-card px-4 py-3 rounded-lg flex justify-between items-center hover:bg-gray-50">
+                                    <span class="text-sm font-medium text-gray-700">无损 / 原画 (100%)</span>
+                                    <div class="radio-dot"></div>
+                                </div>
+                            </label>
+                            <label class="cursor-pointer block">
+                                <input type="radio" name="quality_level" value="0.8|0.9" class="hidden" checked>
+                                <div class="radio-card px-4 py-3 rounded-lg flex justify-between items-center hover:bg-gray-50">
+                                    <div>
+                                        <span class="text-sm font-medium text-gray-700">高画质 (90%)</span>
+                                        <span class="text-[10px] text-white bg-black px-1.5 py-0.5 rounded ml-2">推荐</span>
+                                    </div>
+                                    <div class="radio-dot"></div>
+                                </div>
+                            </label>
+                            <label class="cursor-pointer block">
+                                <input type="radio" name="quality_level" value="0.6|0.75" class="hidden">
+                                <div class="radio-card px-4 py-3 rounded-lg flex justify-between items-center hover:bg-gray-50">
+                                    <span class="text-sm font-medium text-gray-700">中画质 (75%尺寸)</span>
+                                    <div class="radio-dot"></div>
+                                </div>
+                            </label>
+                            <label class="cursor-pointer block">
+                                <input type="radio" name="quality_level" value="0.4|0.5" class="hidden">
+                                <div class="radio-card px-4 py-3 rounded-lg flex justify-between items-center hover:bg-gray-50">
+                                    <span class="text-sm font-medium text-gray-700">低画质 (50%尺寸)</span>
+                                    <div class="radio-dot"></div>
+                                </div>
+                            </label>
+                        </div>
+
+                        <div id="panel-size" class="hidden pt-2">
+                            <label class="text-xs text-gray-500 mb-2 block">期望文件体积小于：</label>
+                            <div class="flex items-center border border-gray-300 rounded-lg overflow-hidden focus-within:border-black transition-colors">
+                                <input type="number" id="target-kb" value="200" class="flex-1 p-3 outline-none font-mono font-bold text-gray-800" placeholder="200">
+                                <div class="bg-gray-50 px-4 py-3 text-sm font-bold border-l border-gray-300 text-gray-500">KB</div>
+                            </div>
+                            <p class="text-[10px] text-gray-400 mt-2 leading-relaxed">* 系统将自动降低画质或缩放尺寸以满足限制。</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 底部 -->
+        <footer class="h-20 border-t border-gray-100 bg-white flex items-center justify-between px-6 shrink-0 z-20">
+            <div class="text-xs text-gray-400 hidden sm:flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-gray-300" id="status-dot"></span>
+                <span id="status-text">等待上传图片...</span>
+            </div>
+            <button id="compress-btn" disabled class="neo-btn w-full sm:w-auto px-10 py-3 rounded-lg text-sm font-bold tracking-wide flex items-center justify-center gap-2 shadow-lg disabled:shadow-none disabled:opacity-60 transition-all">
+                开始压缩处理
+            </button>
+        </footer>
+    </div>
+
+    <!-- 结果弹窗 -->
+    <div id="result-overlay" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white w-full max-w-4xl rounded-2xl shadow-2xl p-6 relative flex flex-col max-h-[90vh]">
+            
+            <div class="flex justify-between items-center mb-4 shrink-0">
+                <h2 class="text-lg font-bold text-gray-900 flex items-center gap-2">
+                    <span class="w-2 h-6 bg-black rounded-full"></span>
+                    压缩效果对比
+                </h2>
+                <button id="close-result" class="text-gray-400 hover:text-black p-2">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+
+            <!-- 对比区域 -->
+            <div class="relative w-full h-80 sm:h-96 bg-gray-100 rounded-xl overflow-hidden mb-6 shrink-0 compare-slider-container border border-gray-200" id="compare-box">
+                <div id="img-after" class="image-bg-layer"></div>
+                <div class="absolute top-2 right-2 bg-green-600/90 text-white text-[10px] px-2 py-1 rounded backdrop-blur-md z-10 pointer-events-none">压缩后</div>
+
+                <div id="img-overlay" class="img-comp-overlay">
+                    <div id="img-before" class="image-bg-layer">
+                        <div class="absolute top-2 left-2 bg-black/70 text-white text-[10px] px-2 py-1 rounded backdrop-blur-md whitespace-nowrap pointer-events-none">原图</div>
+                    </div>
+                </div>
+
+                <div id="slider-handle" class="slider-handle">
+                    <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg>
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-2 gap-4 mb-6">
+                <div class="bg-gray-50 rounded-xl p-4 border border-gray-100 text-center">
+                    <p class="text-[10px] text-gray-400 uppercase tracking-wider mb-1">原始体积</p>
+                    <p class="text-lg font-mono text-gray-500 line-through" id="res-old">0 MB</p>
+                </div>
+                <div class="bg-gray-50 rounded-xl p-4 border border-green-100 bg-green-50/50 text-center relative overflow-hidden">
+                    <p class="text-[10px] text-green-600 uppercase tracking-wider mb-1">压缩后体积</p>
+                    <p class="text-2xl font-bold font-mono text-gray-900" id="res-new">0 MB</p>
+                    <div id="res-badge" class="absolute top-0 right-0 bg-green-500 text-white text-[10px] px-2 py-0.5 rounded-bl-lg font-bold"></div>
+                </div>
+            </div>
+            
+            <div id="res-msg" class="text-xs text-center text-gray-500 mb-6 h-5"></div>
+
+            <div class="grid grid-cols-4 gap-4 mt-auto">
+                <button id="retry-btn" class="col-span-1 border border-gray-200 rounded-xl font-bold text-sm hover:bg-gray-50 text-gray-600 transition-colors">
+                    重新调整
+                </button>
+                <a id="download-btn" href="#" class="col-span-3 neo-btn rounded-xl text-sm font-bold flex items-center justify-center gap-2 py-4">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                    下载保存图片
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const els = {
+            fileInput: document.getElementById('file-input'),
+            dropZone: document.getElementById('drop-zone'),
+            viewEmpty: document.getElementById('view-empty'),
+            viewPreview: document.getElementById('view-preview'),
+            previewImg: document.getElementById('preview-img'),
+            filename: document.getElementById('filename'),
+            originalSize: document.getElementById('original-size'),
+            settingsPlaceholder: document.getElementById('settings-placeholder'),
+            settingsContent: document.getElementById('settings-content'),
+            compressBtn: document.getElementById('compress-btn'),
+            statusText: document.getElementById('status-text'),
+            statusDot: document.getElementById('status-dot'),
+            modeQualityBtn: document.getElementById('mode-quality'),
+            modeSizeBtn: document.getElementById('mode-size'),
+            panelQuality: document.getElementById('panel-quality'),
+            panelSize: document.getElementById('panel-size'),
+            resultOverlay: document.getElementById('result-overlay'),
+            closeResult: document.getElementById('close-result'),
+            retryBtn: document.getElementById('retry-btn'),
+            downloadBtn: document.getElementById('download-btn'),
+            resOld: document.getElementById('res-old'),
+            resNew: document.getElementById('res-new'),
+            resMsg: document.getElementById('res-msg'),
+            resBadge: document.getElementById('res-badge'),
+            compareBox: document.getElementById('compare-box'),
+            imgBefore: document.getElementById('img-before'),
+            imgAfter: document.getElementById('img-after'),
+            imgOverlay: document.getElementById('img-overlay'),
+            sliderHandle: document.getElementById('slider-handle')
+        };
+
+        let state = { file: null, imgObj: null, mode: 'quality', originalUrl: null };
+
+        const handleFile = (file) => {
+            if (!file || !file.type.match(/image.*/)) return alert('请上传图片文件');
+            state.file = file;
+            els.filename.innerText = file.name;
+            els.originalSize.innerText = formatSize(file.size);
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                state.imgObj = new Image();
+                state.imgObj.onload = () => {
+                    els.viewEmpty.classList.add('hidden');
+                    els.viewPreview.classList.remove('hidden');
+                    els.previewImg.src = e.target.result;
+                    els.settingsPlaceholder.classList.add('hidden');
+                    els.settingsContent.classList.remove('hidden');
+                    setTimeout(() => els.settingsContent.classList.add('visible'), 50);
+                    els.compressBtn.disabled = false;
+                    els.statusText.innerText = "已就绪，请配置参数";
+                    els.statusDot.className = "w-2 h-2 rounded-full bg-green-500";
+                };
+                state.imgObj.src = e.target.result;
+                state.originalUrl = e.target.result;
+            };
+            reader.readAsDataURL(file);
+            document.querySelectorAll('input[name="format"]').forEach(r => { if (r.value === file.type) r.checked = true; });
+        };
+
+        els.fileInput.addEventListener('change', (e) => handleFile(e.target.files[0]));
+        els.dropZone.addEventListener('dragover', (e) => { e.preventDefault(); els.viewEmpty.classList.add('dragging'); });
+        els.dropZone.addEventListener('dragleave', (e) => els.viewEmpty.classList.remove('dragging'));
+        els.dropZone.addEventListener('drop', (e) => { e.preventDefault(); els.viewEmpty.classList.remove('dragging'); if(e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]); });
+
+        const setMode = (mode) => {
+            state.mode = mode;
+            if (mode === 'quality') {
+                els.modeQualityBtn.classList.replace('text-gray-400', 'text-black');
+                els.modeQualityBtn.classList.add('bg-white', 'shadow-sm');
+                els.modeSizeBtn.classList.replace('text-black', 'text-gray-400');
+                els.modeSizeBtn.classList.remove('bg-white', 'shadow-sm');
+                els.panelQuality.classList.remove('hidden');
+                els.panelSize.classList.add('hidden');
+            } else {
+                els.modeSizeBtn.classList.replace('text-gray-400', 'text-black');
+                els.modeSizeBtn.classList.add('bg-white', 'shadow-sm');
+                els.modeQualityBtn.classList.replace('text-black', 'text-gray-400');
+                els.modeQualityBtn.classList.remove('bg-white', 'shadow-sm');
+                els.panelSize.classList.remove('hidden');
+                els.panelQuality.classList.add('hidden');
+            }
+        };
+        els.modeQualityBtn.addEventListener('click', () => setMode('quality'));
+        els.modeSizeBtn.addEventListener('click', () => setMode('size'));
+
+        els.compressBtn.addEventListener('click', () => {
+            if (!state.file) return;
+            els.compressBtn.disabled = true;
+            els.compressBtn.innerText = "处理中...";
+            els.statusText.innerText = "正在压缩...";
+            els.statusDot.className = "w-2 h-2 rounded-full bg-yellow-400 animate-pulse";
+            setTimeout(processImage, 100);
+        });
+
+        const closeResult = () => {
+            els.resultOverlay.classList.add('hidden');
+            els.compressBtn.disabled = false;
+            els.compressBtn.innerText = "开始压缩处理";
+            els.statusText.innerText = "等待操作";
+            els.statusDot.className = "w-2 h-2 rounded-full bg-green-500";
+        };
+        els.closeResult.addEventListener('click', closeResult);
+        els.retryBtn.addEventListener('click', closeResult);
+
+        // --- 核心优化：智能压缩算法 ---
+        function processImage() {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const format = document.querySelector('input[name="format"]:checked').value;
+
+            // 1. 获取用户选择的参数 (格式: "quality|scale")
+            let qualityVal = 0.8;
+            let scaleVal = 1.0;
+
+            if (state.mode === 'quality') {
+                const valStr = document.querySelector('input[name="quality_level"]:checked').value;
+                const parts = valStr.split('|');
+                qualityVal = parseFloat(parts[0]);
+                scaleVal = parseFloat(parts[1]);
+            } else {
+                // 按大小模式，初始全量
+                qualityVal = 0.9;
+                scaleVal = 1.0;
+            }
+
+            // 2. 特殊逻辑：如果是 PNG 且没有明确要求 resize，强制 high quality 下不缩放
+            // 注意：PNG 忽略 quality 参数，只能靠 scale
+            if (format === 'image/png') {
+                // 如果用户选的是无损(1.0)，scale 保持 1.0
+                // 如果用户选的是高(0.9)，我们这里 scale 设为 0.9，否则 PNG 体积不会变
+            }
+
+            // 3. 应用尺寸缩放
+            let targetWidth = Math.floor(state.imgObj.width * scaleVal);
+            let targetHeight = Math.floor(state.imgObj.height * scaleVal);
+
+            canvas.width = targetWidth;
+            canvas.height = targetHeight;
+            
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(state.imgObj, 0, 0, targetWidth, targetHeight);
+
+            if (state.mode === 'quality') {
+                canvas.toBlob(blob => handleResult(blob, format), format, qualityVal);
+            } else {
+                const targetBytes = parseInt(document.getElementById('target-kb').value) * 1024;
+                compressToSize(canvas, targetBytes, format);
+            }
+        }
+
+        function compressToSize(canvas, targetBytes, format) {
+            let quality = 0.8, scale = 1.0, attempts = 0;
+            const originW = canvas.width, originH = canvas.height;
+            const ctx = canvas.getContext('2d');
+
+            const attempt = () => {
+                // 更加激进的压缩策略
+                if ((format === 'image/png' && scale < 1.0) || quality < 0.2) {
+                    scale *= 0.85; 
+                    quality = 0.8;
+                    canvas.width = Math.floor(originW * scale);
+                    canvas.height = Math.floor(originH * scale);
+                    ctx.fillStyle = '#FFFFFF';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(state.imgObj, 0, 0, canvas.width, canvas.height);
+                }
+                canvas.toBlob(blob => {
+                    attempts++;
+                    if (blob.size <= targetBytes || attempts > 10 || scale < 0.1) handleResult(blob, format);
+                    else { quality -= 0.15; attempt(); }
+                }, format, quality);
+            };
+            attempt();
+        }
+
+        function handleResult(blob, format) {
+            const url = URL.createObjectURL(blob);
+            const extMap = {'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif'};
+            
+            els.imgBefore.style.backgroundImage = `url(${state.originalUrl})`;
+            els.imgAfter.style.backgroundImage = `url(${url})`;
+            
+            initComparisonSlider();
+
+            els.resOld.innerText = formatSize(state.file.size);
+            els.resNew.innerText = formatSize(blob.size);
+            
+            if (blob.size > state.file.size) {
+                const diff = ((blob.size - state.file.size)/state.file.size*100).toFixed(0);
+                els.resBadge.innerText = `+${diff}%`; els.resBadge.className = "absolute top-0 right-0 bg-orange-500 text-white text-[10px] px-2 py-0.5 rounded-bl-lg font-bold";
+                els.resMsg.innerHTML = `<span class="text-orange-500">注意：体积变大了。</span> 建议尝试 WebP 格式或降低画质等级。`;
+            } else {
+                const diff = ((state.file.size - blob.size)/state.file.size*100).toFixed(1);
+                els.resBadge.innerText = `-${diff}%`; els.resBadge.className = "absolute top-0 right-0 bg-green-500 text-white text-[10px] px-2 py-0.5 rounded-bl-lg font-bold";
+                els.resMsg.innerHTML = `优化成功！有效节省了存储空间。`;
+            }
+
+            els.downloadBtn.href = url;
+            els.downloadBtn.download = `min_${state.file.name.split('.')[0]}.${extMap[format]}`;
+            els.resultOverlay.classList.remove('hidden');
+        }
+
+        function formatSize(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + ['B', 'KB', 'MB', 'GB'][i];
+        }
+
+        function initComparisonSlider() {
+            let isDown = false;
+            els.imgOverlay.style.width = '50%';
+            els.sliderHandle.style.left = '50%';
+            
+            const syncWidth = () => {
+                const totalWidth = els.compareBox.offsetWidth;
+                els.imgBefore.style.width = totalWidth + 'px';
+            };
+            syncWidth();
+            window.addEventListener('resize', syncWidth);
+
+            const move = (e) => {
+                if (!isDown) return;
+                const rect = els.compareBox.getBoundingClientRect();
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                let x = clientX - rect.left;
+                if (x < 0) x = 0;
+                if (x > rect.width) x = rect.width;
+                
+                const percent = (x / rect.width) * 100;
+                els.imgOverlay.style.width = percent + '%';
+                els.sliderHandle.style.left = percent + '%';
+            };
+
+            const start = (e) => { isDown = true; };
+            const end = () => isDown = false;
+
+            els.compareBox.addEventListener('mousedown', start);
+            els.compareBox.addEventListener('touchstart', start);
+            window.addEventListener('mousemove', move);
+            window.addEventListener('touchmove', move);
+            window.addEventListener('mouseup', end);
+            window.addEventListener('touchend', end);
+        }
+    </script>
+</body>
+</html>
